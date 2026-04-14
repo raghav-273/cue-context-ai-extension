@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CUE</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+
+  <div class="header">
+    <div class="logo">CUE</div>
+    <div class="tagline">Contextual AI Assistant</div>
+  </div>
+
+  <div class="quick-actions">
+    <button data-action="summarize"  class="action-btn">◎ Summarize</button>
+    <button data-action="keypoints"  class="action-btn">◈ Key Points</button>
+    <button data-action="simplify"   class="action-btn">◇ Simplify</button>
+    <button data-action="critique"   class="action-btn">◉ Critique</button>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="ask-section">
+    <textarea id="question" placeholder="Ask anything about this page…" rows="3"></textarea>
+    <button id="askBtn" class="primary-btn">Ask ↑</button>
+  </div>
+
+  <div id="output" class="output">
+    <span class="placeholder">Your answer will appear here…</span>
+  </div>
+
+  <div class="footer">
+    <span id="status" class="status-text"></span>
+    <button id="openSidebar" class="ghost-btn">Open Sidebar ↗</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
