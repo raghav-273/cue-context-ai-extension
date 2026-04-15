@@ -110,11 +110,11 @@ cue-extension/
 
 ---
 
-## Security
+## Security (current issue):
 
 ⚠️ **The API key in `config.js` is readable by anyone who inspects the extension.**
 
-### Production fix (backend proxy):
+### Production fix (backend proxy): 
 
 ```
 Browser Extension  →  Your Backend  →  Gemini API
@@ -140,7 +140,7 @@ chrome.runtime.onMessage.addListener((msg, _, sendResponse) => {
 
 ---
 
-## Standout Feature Ideas (Portfolio Differentiators)
+## Standout Feature Ideas :
 
 ### 1. Page Diff Mode
 When you revisit a page, CUE detects what changed since your last visit and highlights the diffs. Great for news articles, docs, product pages.
@@ -159,7 +159,7 @@ Detect the type of page (news, academic paper, product page, tutorial) and autom
 
 ---
 
-## Upgrade Path
+## Upgrade Path (Open Contribution)/ (Will do in future)
 
 | Priority | Feature | Effort |
 |---|---|---|
@@ -177,10 +177,10 @@ Detect the type of page (news, academic paper, product page, tutorial) and autom
 
 - **Manifest V3** Chrome Extension
 - **Vanilla JS** (no framework) — keeps bundle size zero
-- **Gemini 2.5 Flash Lite** via Google AI API
+- **Gemini 2.5 Flash Lite** via Google AI API (for testing)
 - **chrome.storage.local** for persistence
 - **CSS custom properties** for theming
 
 ---
 
-*Built as a portfolio project demonstrating: modular architecture, clean async patterns, production UI polish, and AI product thinking.*
+*Built by Raghav Mishra*
