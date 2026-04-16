@@ -104,9 +104,10 @@ cue-extension/
 3. Click **Load unpacked** → select the `cue-extension/` folder
 4. Add your API key in `src/core/config.js`:
    ```js
-   KEY: "YOUR_GEMINI_API_KEY"
+   KEY: "YOUR_API_KEY"
    ```
-5. Pin the extension → click **CUE** or press `Ctrl+Shift+K` on any page
+5. For the popup to work, you have to Add your API key in popup/popup.js
+6. Pin the extension → click **CUE** or press `Ctrl+Shift+K` on any page
 
 ---
 
