@@ -177,7 +177,7 @@ Detect the type of page (news, academic paper, product page, tutorial) and autom
 
 - **Manifest V3** Chrome Extension
 - **Vanilla JS** (no framework) — keeps bundle size zero
-- **Gemini 2.5 Flash Lite** via Google AI API (for testing)
+- **Gemini 2.5 Flash Lite** via Google AI API (for testing) `Can use better/paid models`
 - **chrome.storage.local** for persistence
 - **CSS custom properties** for theming
 
