@@ -1,93 +1,114 @@
-// src/core/api.js
-// ─────────────────────────────────────────────
-// All AI calls live here. Zero UI logic.
-// Multi-turn conversation is handled by passing
-// the full messages array (OpenAI-style turns).
-// ─────────────────────────────────────────────
-
+// src/core/api.js — Streaming AI layer
 const CUE_API = (() => {
 
-  const { API } = CUE_CONFIG;
-
-  // ── Error types ───────────────────────────────
-
   class APIError extends Error {
-    constructor(message, code) {
-      super(message);
-      this.name = "APIError";
-      this.code = code; // "network" | "auth" | "rate_limit" | "timeout" | "unknown"
-    }
+    constructor(msg, code) { super(msg); this.name = "APIError"; this.code = code; }
   }
 
-  // ── Fetch with timeout ────────────────────────
-
-  function fetchWithTimeout(url, options, ms = API.TIMEOUT_MS) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), ms);
-
-    return fetch(url, { ...options, signal: controller.signal })
-      .finally(() => clearTimeout(timer));
-  }
-
-  // ── Build Gemini-format request body ──────────
-  // messages: [{ role: "user"|"model", content: string }]
-
-  function buildRequestBody(messages, systemPrompt) {
-    // Gemini uses "contents" array with "user"/"model" roles
-    // System instructions go into systemInstruction field
+  function buildBody(messages, systemPrompt) {
     return {
-      system_instruction: {
-        parts: [{ text: systemPrompt }],
-      },
-      contents: messages.map((m) => ({
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: messages.map(m => ({
         role:  m.role === "assistant" ? "model" : "user",
         parts: [{ text: m.content }],
       })),
       generationConfig: {
-        maxOutputTokens: API.MAX_TOKENS,
-        temperature:     0.7,
-        topP:            0.9,
+        maxOutputTokens: CUE.API.MAX_TOKENS,
+        temperature:     CUE.API.TEMPERATURE,
+        topP: 0.92,
       },
     };
   }
 
-  // ── Core fetch ────────────────────────────────
-
+  // Non-streaming complete (for background/popup)
   async function complete(messages, systemPrompt) {
-    const url = `${API.BASE_URL}/${API.MODEL}:generateContent?key=${API.KEY}`;
+    const url = `${CUE.API.BASE}/${CUE.API.MODEL}:generateContent?key=${CUE.API.KEY}`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), CUE.API.TIMEOUT_MS);
 
     let res;
     try {
-      res = await fetchWithTimeout(url, {
-        method:  "POST",
+      res = await fetch(url, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(buildRequestBody(messages, systemPrompt)),
+        body: JSON.stringify(buildBody(messages, systemPrompt)),
+        signal: ctrl.signal,
       });
-    } catch (err) {
-      if (err.name === "AbortError") {
-        throw new APIError("Request timed out. Try again.", "timeout");
-      }
-      throw new APIError("Network error. Check your connection.", "network");
+    } catch(e) {
+      clearTimeout(timer);
+      if (e.name === "AbortError") throw new APIError("Request timed out.", "timeout");
+      throw new APIError("Network error.", "network");
     }
+    clearTimeout(timer);
 
-    if (res.status === 401 || res.status === 403) {
-      throw new APIError("Invalid API key.", "auth");
-    }
-    if (res.status === 429) {
-      throw new APIError("Rate limit hit. Wait a moment.", "rate_limit");
-    }
-    if (!res.ok) {
-      throw new APIError(`API error ${res.status}.`, "unknown");
-    }
+    if (res.status === 401 || res.status === 403) throw new APIError("Invalid API key.", "auth");
+    if (res.status === 429) throw new APIError("Rate limited — wait a moment.", "rate_limit");
+    if (!res.ok) throw new APIError(`API error ${res.status}.`, "unknown");
 
     const data = await res.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!text) throw new APIError("Empty response from AI.", "unknown");
-
+    if (!text) throw new APIError("Empty AI response.", "empty");
     return text.trim();
   }
 
-  return { complete, APIError };
+  // Streaming complete — calls onToken(chunk) as words arrive, returns full text
+  async function stream(messages, systemPrompt, onToken) {
+    const url = `${CUE.API.BASE}/${CUE.API.MODEL}:streamGenerateContent?alt=sse&key=${CUE.API.KEY}`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), CUE.API.TIMEOUT_MS);
 
+    let res;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody(messages, systemPrompt)),
+        signal: ctrl.signal,
+      });
+    } catch(e) {
+      clearTimeout(timer);
+      if (e.name === "AbortError") throw new APIError("Request timed out.", "timeout");
+      throw new APIError("Network error. Check your connection.", "network");
+    }
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) throw new APIError("Invalid API key.", "auth");
+      if (res.status === 429) throw new APIError("Rate limited.", "rate_limit");
+      throw new APIError(`API error ${res.status}.`, "unknown");
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let full = "";
+    let buf = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop(); // keep incomplete line
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        if (raw === "[DONE]") continue;
+        try {
+          const parsed = JSON.parse(raw);
+          const chunk = parsed.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+          if (chunk) {
+            full += chunk;
+            onToken(chunk, full);
+          }
+        } catch {}
+      }
+    }
+
+    if (!full) throw new APIError("Empty AI response.", "empty");
+    return full.trim();
+  }
+
+  return { complete, stream, APIError };
 })();

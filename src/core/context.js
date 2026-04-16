@@ -1,84 +1,88 @@
-// src/core/context.js
-// ─────────────────────────────────────────────
-// Smart content extraction. Strips navigation,
-// ads, scripts and focuses on the main body text.
-// This is the "RAG" layer of the extension.
-// ─────────────────────────────────────────────
-
+// src/core/context.js — Intelligent page content extraction
 const CUE_CONTEXT = (() => {
 
-  // ── Clone + strip noise ───────────────────────
-
-  function getCleanDocument() {
-    const clone = document.body.cloneNode(true);
-
-    CUE_CONFIG.CONTEXT.NOISE_SELECTORS.forEach((sel) => {
-      clone.querySelectorAll(sel).forEach((el) => el.remove());
+  function stripNoise(root) {
+    const clone = root.cloneNode(true);
+    CUE.CONTEXT.NOISE_SELECTORS.forEach(s => {
+      try { clone.querySelectorAll(s).forEach(el => el.remove()); } catch {}
     });
-
     return clone;
   }
 
-  // ── Extract text from best candidate element ──
+  // Score candidate elements by content richness
+  function scoreElement(el) {
+    const text  = el.innerText || el.textContent || "";
+    const words = text.trim().split(/\s+/).length;
+    const links = el.querySelectorAll("a").length;
+    const paras = el.querySelectorAll("p").length;
+    // More paragraphs, fewer links relative to words = better content
+    return (words * 1.0) + (paras * 10) - (links * 2);
+  }
 
-  function extractMainText() {
-    // Priority: <main>, <article>, [role=main], then body fallback
-    const candidates = [
-      document.querySelector("main"),
-      document.querySelector("article"),
-      document.querySelector("[role='main']"),
-    ].filter(Boolean);
+  function findMainContent() {
+    // Try semantic selectors first
+    for (const sel of CUE.CONTEXT.READABILITY_SELECTORS) {
+      const el = document.querySelector(sel);
+      if (el && (el.innerText || "").trim().length > 200) return el;
+    }
 
-    const source = candidates[0] ?? getCleanDocument();
-    const raw = source.innerText ?? source.textContent ?? "";
+    // Score all large block elements and pick the best
+    const candidates = [...document.querySelectorAll("div, section, article")].filter(el => {
+      const t = (el.innerText || "").trim();
+      return t.length > 300 && t.length < 50_000;
+    });
 
-    // Collapse whitespace runs
-    return raw
+    if (!candidates.length) return document.body;
+
+    return candidates.reduce((best, el) => scoreElement(el) > scoreElement(best) ? el : best);
+  }
+
+  function getMainText() {
+    const el = findMainContent();
+    const clone = stripNoise(el);
+    return (clone.innerText || clone.textContent || "")
       .replace(/\n{3,}/g, "\n\n")
       .replace(/[ \t]{2,}/g, " ")
       .trim()
-      .slice(0, CUE_CONFIG.CONTEXT.MAX_PAGE_CHARS);
+      .slice(0, CUE.CONTEXT.MAX_PAGE_CHARS);
   }
 
-  // ── Selected text ─────────────────────────────
+  function getMeta() {
+    const url    = location.href;
+    const domain = location.hostname.replace(/^www\./, "");
+    const title  = document.title;
+    const desc   = document.querySelector('meta[name="description"]')?.content
+                || document.querySelector('meta[property="og:description"]')?.content
+                || "";
+    const author = document.querySelector('meta[name="author"]')?.content
+                || document.querySelector('[rel="author"]')?.textContent
+                || "";
+    const text   = getMainText();
+    const words  = text.split(/\s+/).length;
+    const readTime = Math.ceil(words / 200); // avg reading speed
+
+    return { url, domain, title, desc: desc.slice(0, 200), author, wordCount: words, readTime };
+  }
 
   function getSelection() {
     return window.getSelection()?.toString().trim() ?? "";
   }
 
-  // ── Page metadata ─────────────────────────────
-
-  function getMeta() {
-    const desc =
-      document.querySelector('meta[name="description"]')?.content ??
-      document.querySelector('meta[property="og:description"]')?.content ??
-      "";
-
+  function buildContext() {
+    const meta = getMeta();
+    const text = getMainText();
     return {
-      title:       document.title,
-      url:         location.href,
-      description: desc.slice(0, 200),
+      prompt: [
+        `PAGE: ${meta.title}`,
+        `URL: ${meta.url}`,
+        meta.desc   ? `DESCRIPTION: ${meta.desc}` : "",
+        meta.author ? `AUTHOR: ${meta.author}` : "",
+        `WORD COUNT: ~${meta.wordCount} words (${meta.readTime} min read)`,
+        `\nCONTENT:\n${text}`,
+      ].filter(Boolean).join("\n"),
+      meta,
     };
   }
 
-  // ── Compose final context string ──────────────
-  // Passed into every AI prompt. Structured so the
-  // model knows exactly what each section is.
-
-  function buildPageContext() {
-    const meta = getMeta();
-    const text = extractMainText();
-
-    return [
-      `PAGE TITLE: ${meta.title}`,
-      `URL: ${meta.url}`,
-      meta.description ? `DESCRIPTION: ${meta.description}` : "",
-      `\nPAGE CONTENT:\n${text}`,
-    ]
-      .filter(Boolean)
-      .join("\n");
-  }
-
-  return { buildPageContext, getSelection, getMeta };
-
+  return { buildContext, getSelection, getMeta, getMainText };
 })();

@@ -1,128 +1,133 @@
-// src/ui/messages.js
-// ─────────────────────────────────────────────
-// All message rendering lives here.
-// Supports: user bubbles, AI bubbles, streaming
-// updates, loading skeleton, empty state.
-// ─────────────────────────────────────────────
-
+// src/ui/messages.js — Message bubble rendering + streaming
 const CUE_MESSAGES = (() => {
 
-  function getChatBox() {
-    return document.getElementById("cue-chat");
-  }
+  function getChat() { return document.getElementById("cue-chat"); }
 
-  // ── Empty state ───────────────────────────────
+  // ── User bubble ───────────────────────────────
 
-  function renderEmpty() {
-    const chat = getChatBox();
-    chat.innerHTML = "";
+  function renderUser(msg) {
+    CUE_SIDEBAR.clearEmpty();
+    const chat = getChat();
 
-    const empty = CUE_DOM.el("div", { class: "cue-empty" },
-      CUE_DOM.el("div", { class: "cue-empty-icon" }, "◎"),
-      CUE_DOM.el("p",   { class: "cue-empty-title" }, "Ask me anything"),
-      CUE_DOM.el("p",   { class: "cue-empty-sub" },
-        "I have full context of this page. Use quick actions below or type a question."
-      ),
+    const bubble = CUE_DOM.el("div", { class:"cue-msg cue-msg--user", "data-id": msg.id },
+      CUE_DOM.el("div", { class:"cue-msg-content" }, msg.content),
+      CUE_DOM.el("div", { class:"cue-msg-meta" }, CUE_TIME.fmtExact(msg.ts)),
     );
 
-    chat.appendChild(empty);
+    chat.appendChild(bubble);
+    CUE_DOM.scrollBottom(chat);
+    return bubble;
   }
 
-  // ── Single message bubble ─────────────────────
+  // ── AI bubble with streaming support ──────────
 
-  function renderMessage(msg) {
-    const chat = getChatBox();
+  function renderAIPlaceholder(msgId) {
+    const chat = getChat();
 
-    // Remove empty state on first message
-    const emptyEl = chat.querySelector(".cue-empty");
-    if (emptyEl) emptyEl.remove();
+    const contentEl = CUE_DOM.el("div", { class:"cue-msg-content cue-streaming" });
+    const typing    = CUE_DOM.el("div", { class:"cue-typing" },
+      CUE_DOM.el("span"), CUE_DOM.el("span"), CUE_DOM.el("span"),
+    );
+    contentEl.appendChild(typing);
 
-    const bubble = CUE_DOM.el("div", {
-      class: `cue-msg cue-msg--${msg.role}`,
-      "data-timestamp": msg.timestamp,
+    const bubble = CUE_DOM.el("div", { class:"cue-msg cue-msg--ai cue-msg--loading", "data-id": msgId },
+      CUE_DOM.el("div", { class:"cue-msg-ai-header" },
+        CUE_DOM.el("div", { class:"cue-ai-label" },
+          CUE_DOM.el("span", { class:"cue-ai-dot" }),
+          "CUE",
+        ),
+      ),
+      contentEl,
+    );
+
+    chat.appendChild(bubble);
+    CUE_DOM.scrollBottom(chat);
+    return { bubble, contentEl };
+  }
+
+  // Stream tokens into the content element
+  function streamToken(contentEl, fullText) {
+    const chat = getChat();
+    CUE_DOM.setHTML(contentEl, CUE_MD.render(fullText) + '<span class="cue-cursor">▋</span>');
+    CUE_DOM.scrollBottom(chat);
+  }
+
+  // Finalize a streaming bubble
+  function finalizeAI(bubble, contentEl, msg) {
+    bubble.classList.remove("cue-msg--loading");
+    contentEl.classList.remove("cue-streaming");
+
+    const words    = msg.content.split(/\s+/).length;
+    const copyBtn  = CUE_DOM.el("button", { class:"cue-copy-btn", title:"Copy response" }, "⊡ copy");
+    copyBtn.addEventListener("click", () => {
+      navigator.clipboard.writeText(msg.content).then(() => {
+        copyBtn.textContent = "✓ copied";
+        setTimeout(() => { copyBtn.textContent = "⊡ copy"; }, 1800);
+      });
     });
 
-    if (msg.role === "assistant") {
-      // AI messages: rendered markdown
-      const contentEl = CUE_DOM.el("div", { class: "cue-msg-content" });
-      CUE_DOM.setHTML(contentEl, CUE_MARKDOWN.render(msg.content));
-      bubble.appendChild(contentEl);
-    } else {
-      // User messages: plain text
-      bubble.textContent = msg.content;
-    }
-
-    chat.appendChild(bubble);
-    CUE_DOM.scrollToBottom(chat);
-
-    return bubble;
-  }
-
-  // ── Loading skeleton (while AI is thinking) ───
-
-  function renderLoadingBubble() {
-    const chat = getChatBox();
-
-    const bubble = CUE_DOM.el("div", { class: "cue-msg cue-msg--assistant cue-msg--loading" },
-      CUE_DOM.el("div", { class: "cue-typing" },
-        CUE_DOM.el("span"),
-        CUE_DOM.el("span"),
-        CUE_DOM.el("span"),
-      ),
+    const meta = CUE_DOM.el("div", { class:"cue-msg-meta" },
+      CUE_DOM.el("span", {}, CUE_TIME.fmtExact(msg.ts)),
+      CUE_DOM.el("span", { class:"cue-meta-sep" }, "·"),
+      CUE_DOM.el("span", {}, `${words} words`),
+      copyBtn,
     );
 
-    chat.appendChild(bubble);
-    CUE_DOM.scrollToBottom(chat);
+    CUE_DOM.setHTML(contentEl, CUE_MD.render(msg.content));
+    bubble.appendChild(meta);
 
-    return bubble;
-  }
-
-  // ── Replace loading bubble with real content ──
-
-  function resolveLoadingBubble(bubble, msg) {
-    bubble.classList.remove("cue-msg--loading");
-    bubble.innerHTML = "";
-
-    const contentEl = CUE_DOM.el("div", { class: "cue-msg-content" });
-    CUE_DOM.setHTML(contentEl, CUE_MARKDOWN.render(msg.content));
-    bubble.appendChild(contentEl);
-
-    CUE_DOM.scrollToBottom(getChatBox());
+    const chat = getChat();
+    CUE_DOM.scrollBottom(chat);
   }
 
   // ── Error bubble ──────────────────────────────
 
-  function renderErrorInBubble(bubble, message) {
-    bubble.classList.remove("cue-msg--loading");
-    bubble.classList.add("cue-msg--error");
-    bubble.innerHTML = "";
-    bubble.textContent = `⚠ ${message}`;
-    CUE_DOM.scrollToBottom(getChatBox());
+  function renderError(msgId, errMsg) {
+    const chat = getChat();
+    const existing = chat.querySelector(`[data-id="${msgId}"]`);
+
+    const errEl = CUE_DOM.el("div", { class:"cue-msg cue-msg--error", "data-id": msgId },
+      CUE_DOM.el("div", { class:"cue-error-icon" }, "⚠"),
+      CUE_DOM.el("div", { class:"cue-error-text" }, errMsg),
+    );
+
+    if (existing) existing.replaceWith(errEl);
+    else chat.appendChild(errEl);
+    CUE_DOM.scrollBottom(chat);
   }
 
-  // ── Render full history (on load) ─────────────
+  // ── System message (mode label, divider) ──────
+
+  function renderSystem(text) {
+    const chat = getChat();
+    chat.appendChild(
+      CUE_DOM.el("div", { class:"cue-msg-system" },
+        CUE_DOM.el("span", { class:"cue-sys-line" }),
+        CUE_DOM.el("span", { class:"cue-sys-text" }, text),
+        CUE_DOM.el("span", { class:"cue-sys-line" }),
+      )
+    );
+  }
+
+  // ── Render full history ───────────────────────
 
   function renderHistory(messages) {
-    const chat = getChatBox();
+    const chat = getChat();
     chat.innerHTML = "";
 
     if (!messages.length) {
-      renderEmpty();
+      CUE_SIDEBAR.resetEmpty();
       return;
     }
 
-    // Only show last MAX_HISTORY_RENDER messages
-    const slice = messages.slice(-CUE_CONFIG.UI.MAX_HISTORY_RENDER);
-    slice.forEach((msg) => renderMessage(msg));
+    messages.slice(-CUE.UI.MAX_BUBBLES).forEach(msg => {
+      if (msg.role === "user") renderUser(msg);
+      else if (msg.role === "assistant") {
+        const { bubble, contentEl } = renderAIPlaceholder(msg.id);
+        finalizeAI(bubble, contentEl, msg);
+      }
+    });
   }
 
-  return {
-    renderEmpty,
-    renderMessage,
-    renderLoadingBubble,
-    resolveLoadingBubble,
-    renderErrorInBubble,
-    renderHistory,
-  };
-
+  return { renderUser, renderAIPlaceholder, streamToken, finalizeAI, renderError, renderSystem, renderHistory };
 })();

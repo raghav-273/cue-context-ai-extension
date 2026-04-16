@@ -1,28 +1,49 @@
-// background.js
-// ─────────────────────────────────────────────
-// Service worker. Minimal now — but the right
-// place to add: auth proxying, API key management,
-// cross-tab messaging, analytics, and more.
-// ─────────────────────────────────────────────
+// background.js — Service worker
 
+// Tab ID relay
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-
-  // ── Relay current tab ID to content script ────
-  // Content scripts can't call chrome.tabs.getCurrent(),
-  // so they ask the background.
-
   if (msg.type === "GET_TAB_ID") {
     sendResponse({ tabId: sender.tab?.id ?? null });
     return true;
   }
-
-  // ── Future: proxy AI calls here to hide API key ──
-  // if (msg.type === "AI_COMPLETE") { ... }
-
+  if (msg.type === "OPEN_SIDEBAR") {
+    chrome.tabs.sendMessage(sender.tab.id, { type: "OPEN_SIDEBAR" });
+  }
 });
 
-// Clean up storage when a tab is closed
-chrome.tabs.onRemoved.addListener((tabId) => {
-  const key = `cue_history_${tabId}`;
-  chrome.storage.local.remove(key);
+// Context menu: right-click → ask CUE
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id:       "cue-explain",
+    title:    'Ask CUE: "%s"',
+    contexts: ["selection"],
+  });
+  chrome.contextMenus.create({
+    id:       "cue-summarize-page",
+    title:    "Summarize this page with CUE",
+    contexts: ["page"],
+  });
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (!tab?.id) return;
+
+  if (info.menuItemId === "cue-explain" && info.selectionText) {
+    chrome.tabs.sendMessage(tab.id, {
+      type:   "CONTEXT_ACTION",
+      action: "explain",
+      text:   info.selectionText,
+    });
+  }
+  if (info.menuItemId === "cue-summarize-page") {
+    chrome.tabs.sendMessage(tab.id, {
+      type:   "CONTEXT_ACTION",
+      action: "summarize",
+    });
+  }
+});
+
+// Clean up history when a tab closes
+chrome.tabs.onRemoved.addListener(tabId => {
+  chrome.storage.local.remove(`cue_h_${tabId}`);
 });

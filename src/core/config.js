@@ -1,75 +1,85 @@
-// src/core/config.js
-// ─────────────────────────────────────────────
-// Single source of truth for all configuration.
-// Never scatter magic strings across files.
-// ─────────────────────────────────────────────
+// src/core/config.js — Single source of truth
+const CUE = {
 
-const CUE_CONFIG = {
+  VERSION: "3.0.0",
 
-  // ── API ──────────────────────────────────────
-  // NOTE: In production, proxy through your own backend
-  // to keep the key server-side. See SECURITY.md.
   API: {
-    BASE_URL: "https://generativelanguage.googleapis.com/v1beta/models",
-    MODEL:    "gemini-2.5-flash-lite",
-    KEY:      "YOUR_API_KEY_HERE",   // ← Replace or wire to chrome.storage
-    MAX_TOKENS: 1024,
-    TIMEOUT_MS: 15_000,
+    BASE:       "https://generativelanguage.googleapis.com/v1beta/models",
+    MODEL:      "gemini-2.5-flash-lite",
+    KEY:        "YOUR_API_KEY_HERE",
+    MAX_TOKENS: 1500,
+    TIMEOUT_MS: 20_000,
+    TEMPERATURE: 0.72,
   },
 
-  // ── Context extraction ────────────────────────
   CONTEXT: {
-    MAX_PAGE_CHARS:      4_000,   // ~1k tokens
-    MAX_HISTORY_TURNS:   12,      // messages kept in prompt
+    MAX_PAGE_CHARS:   5_000,
+    MAX_HISTORY:      20,
     NOISE_SELECTORS: [
-      "nav", "footer", "header", "aside",
-      "script", "style", "noscript",
-      "[role='banner']", "[role='navigation']",
-      ".ads", ".cookie-banner", "#cookie-notice",
+      "nav","footer","header","aside","script","style","noscript",
+      "[role='banner']","[role='navigation']","[role='complementary']",
+      ".ad",".ads",".advertisement",".cookie-banner","#cookie-notice",
+      ".popup",".modal-overlay","[aria-hidden='true']"
     ],
+    READABILITY_SELECTORS: ["main","article","[role='main']","#main","#content",".post-content",".article-body"],
   },
 
-  // ── Storage keys ─────────────────────────────
   STORAGE: {
-    HISTORY_PREFIX: "cue_history_",   // + tabId
-    SETTINGS:       "cue_settings",
+    HISTORY:   "cue_h_",
+    SETTINGS:  "cue_settings",
+    DNA_CACHE: "cue_dna_",
   },
 
-  // ── UI ───────────────────────────────────────
   UI: {
-    SIDEBAR_WIDTH: "360px",
-    ANIMATION_MS:   200,
-    MAX_HISTORY_RENDER: 50,
+    WIDTH:        "380px",
+    ANIM_FAST:    "150ms",
+    ANIM_BASE:    "220ms",
+    ANIM_SLOW:    "400ms",
+    MAX_BUBBLES:  60,
   },
 
-  // ── Keyboard shortcuts ────────────────────────
   SHORTCUTS: {
-    TOGGLE_SIDEBAR: { key: "k", ctrlKey: true, shiftKey: true },
-    NEW_CHAT:       { key: "n", ctrlKey: true, shiftKey: true },
-    FOCUS_INPUT:    { key: "/", ctrlKey: false, shiftKey: false },
+    TOGGLE:    { key:"k", ctrl:true, shift:true },
+    NEW_CHAT:  { key:"l", ctrl:true, shift:true },
+    PALETTE:   { key:"p", ctrl:true, shift:true },
+    FOCUS:     { key:"/", ctrl:false, shift:false },
   },
 
-  // ── Quick-action prompt templates ────────────
-  ACTIONS: {
+  MODES: {
     summarize: {
-      label:  "Summarize",
-      icon:   "◎",
-      prompt: "Give a concise summary of this page in 3–5 sentences. Be direct.",
+      label:"Summarize",    icon:"◎", color:"#3b82f6",
+      prompt:"Write a crisp, structured summary of this page. Lead with the core thesis, then 3–5 supporting points. Be direct — no filler.",
     },
     keypoints: {
-      label:  "Key Points",
-      icon:   "◈",
-      prompt: "Extract the 5 most important points from this page as short, sharp bullets.",
-    },
-    simplify: {
-      label:  "Simplify",
-      icon:   "◇",
-      prompt: "Explain the main idea of this page as if I'm a curious 16-year-old.",
+      label:"Key Points",   icon:"◈", color:"#8b5cf6",
+      prompt:"Extract exactly 5 key insights from this page. Each should be an actionable or memorable takeaway, not just a topic label.",
     },
     critique: {
-      label:  "Critique",
-      icon:   "◉",
-      prompt: "Critically analyze the claims or arguments made on this page. Note weaknesses or unsupported assertions.",
+      label:"Critique",     icon:"◉", color:"#f59e0b",
+      prompt:"Critically analyze the content on this page. Identify the strongest claim, the weakest assumption, and any missing context or counter-arguments.",
+    },
+    simplify: {
+      label:"Simplify",     icon:"◇", color:"#10b981",
+      prompt:"Explain the main idea of this page in plain language. Imagine explaining it to a smart friend who has no background in this topic.",
+    },
+    outline: {
+      label:"Outline",      icon:"▦", color:"#ec4899",
+      prompt:"Generate a hierarchical outline of this page's structure and content. Use nested bullets to show how ideas relate.",
+    },
+    questions: {
+      label:"Questions",    icon:"?", color:"#06b6d4",
+      prompt:"Generate 5 thought-provoking questions that this page raises but doesn't fully answer. Make them intellectually interesting.",
     },
   },
+
+  SUGGEST_PROMPTS: [
+    "What's the main argument?",
+    "What are the key takeaways?",
+    "Explain this simply",
+    "What's missing from this?",
+    "Find any logical gaps",
+    "TL;DR",
+    "What should I ask next?",
+    "Compare to common knowledge",
+  ],
 };

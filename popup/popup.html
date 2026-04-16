@@ -1,38 +1,52 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <title>CUE</title>
-  <link rel="stylesheet" href="popup.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="popup.css"/>
 </head>
 <body>
-
   <div class="header">
-    <div class="logo">CUE</div>
-    <div class="tagline">Contextual AI Assistant</div>
+    <div class="brand">
+      <div class="logo-mark">C</div>
+      <div>
+        <div class="logo">CUE</div>
+        <div class="tagline">intelligence layer</div>
+      </div>
+    </div>
+    <button id="openSidebarBtn" class="sidebar-btn" title="Open full sidebar">↗ Sidebar</button>
   </div>
 
-  <div class="quick-actions">
-    <button data-action="summarize"  class="action-btn">◎ Summarize</button>
-    <button data-action="keypoints"  class="action-btn">◈ Key Points</button>
-    <button data-action="simplify"   class="action-btn">◇ Simplify</button>
-    <button data-action="critique"   class="action-btn">◉ Critique</button>
+  <div class="page-info" id="pageInfo">
+    <span class="dot"></span>
+    <span id="pageDomain">loading…</span>
+  </div>
+
+  <div class="modes">
+    <button class="mode-btn" data-action="summarize"  style="--c:#3b82f6">◎ Summarize</button>
+    <button class="mode-btn" data-action="keypoints"  style="--c:#8b5cf6">◈ Key Points</button>
+    <button class="mode-btn" data-action="critique"   style="--c:#f59e0b">◉ Critique</button>
+    <button class="mode-btn" data-action="simplify"   style="--c:#10b981">◇ Simplify</button>
+    <button class="mode-btn" data-action="outline"    style="--c:#ec4899">▦ Outline</button>
+    <button class="mode-btn" data-action="questions"  style="--c:#06b6d4">? Questions</button>
   </div>
 
   <div class="divider"></div>
 
-  <div class="ask-section">
-    <textarea id="question" placeholder="Ask anything about this page…" rows="3"></textarea>
-    <button id="askBtn" class="primary-btn">Ask ↑</button>
+  <div class="ask-row">
+    <textarea id="question" placeholder="Ask anything about this page…" rows="2"></textarea>
+    <button id="askBtn">↑</button>
   </div>
 
   <div id="output" class="output">
-    <span class="placeholder">Your answer will appear here…</span>
+    <span class="placeholder">Select a mode or ask a question above…</span>
   </div>
 
   <div class="footer">
-    <span id="status" class="status-text"></span>
-    <button id="openSidebar" class="ghost-btn">Open Sidebar ↗</button>
+    <span id="statusText" class="status"></span>
+    <span class="shortcut">⌘⇧K to toggle sidebar</span>
   </div>
 
   <script src="popup.js"></script>

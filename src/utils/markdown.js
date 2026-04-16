@@ -1,101 +1,84 @@
-// src/utils/markdown.js
-// ─────────────────────────────────────────────
-// Minimal, zero-dependency markdown → HTML
-// renderer. Only handles patterns the AI uses.
-// No XSS risk: we never render user input as HTML.
-// ─────────────────────────────────────────────
+// src/utils/markdown.js — Markdown → HTML renderer (zero deps)
+const CUE_MD = (() => {
+  const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 
-const CUE_MARKDOWN = (() => {
-
-  function escape(str) {
-    return str
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
+  function inline(t) {
+    return esc(t)
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.+?)\*/g,     "<em>$1</em>")
+      .replace(/`(.+?)`/g,       "<code>$1</code>")
+      .replace(/~~(.+?)~~/g,     "<del>$1</del>")
+      .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   }
 
-  function renderInline(text) {
-    return escape(text)
-      .replace(/\*\*(.+?)\*\*/g,  "<strong>$1</strong>")
-      .replace(/\*(.+?)\*/g,      "<em>$1</em>")
-      .replace(/`(.+?)`/g,        "<code>$1</code>");
-  }
-
-  /**
-   * Convert markdown string → safe HTML string.
-   * Handles: headings, bullet lists, numbered lists,
-   * code blocks, bold, italic, inline code.
-   */
   function render(raw) {
     if (!raw) return "";
+    const lines = raw.split("\n");
+    let out = [], inList = false, inOl = false, inCode = false, codeAcc = [], codeLang = "";
 
-    const lines  = raw.split("\n");
-    const output = [];
-    let inList   = false;
-    let inCode   = false;
-    let codeAcc  = [];
+    const closeList = () => {
+      if (inList)  { out.push("</ul>"); inList = false; }
+      if (inOl)    { out.push("</ol>"); inOl = false; }
+    };
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
 
-      // ── Code fence ──────────────────────────
+      // Code fence
       if (line.startsWith("```")) {
         if (inCode) {
-          output.push(`<pre><code>${escape(codeAcc.join("\n"))}</code></pre>`);
-          codeAcc = [];
-          inCode = false;
+          out.push(`<pre class="cue-code" data-lang="${codeLang}"><code>${esc(codeAcc.join("\n"))}</code></pre>`);
+          codeAcc = []; inCode = false; codeLang = "";
         } else {
-          if (inList) { output.push("</ul>"); inList = false; }
+          closeList();
+          codeLang = line.slice(3).trim();
           inCode = true;
         }
         continue;
       }
-
       if (inCode) { codeAcc.push(line); continue; }
 
-      // ── Heading ──────────────────────────────
-      const hMatch = line.match(/^(#{1,3})\s+(.+)/);
-      if (hMatch) {
-        if (inList) { output.push("</ul>"); inList = false; }
-        const level = hMatch[1].length + 2; // h3–h5 (sidebar is small)
-        output.push(`<h${level} class="cue-h">${renderInline(hMatch[2])}</h${level}>`);
+      // Headings
+      const hm = line.match(/^(#{1,4})\s+(.+)/);
+      if (hm) { closeList(); out.push(`<p class="cue-h cue-h${hm[1].length}">${inline(hm[2])}</p>`); continue; }
+
+      // Horizontal rule
+      if (/^[-*_]{3,}$/.test(line.trim())) { closeList(); out.push('<hr class="cue-hr"/>'); continue; }
+
+      // Blockquote
+      if (line.startsWith("> ")) { closeList(); out.push(`<blockquote class="cue-bq">${inline(line.slice(2))}</blockquote>`); continue; }
+
+      // Unordered list
+      const ulm = line.match(/^[-*+]\s+(.+)/);
+      if (ulm) {
+        if (inOl) { out.push("</ol>"); inOl = false; }
+        if (!inList) { out.push("<ul>"); inList = true; }
+        out.push(`<li>${inline(ulm[1])}</li>`);
         continue;
       }
 
-      // ── Bullet list ───────────────────────────
-      const bulletMatch = line.match(/^[-*+]\s+(.+)/);
-      if (bulletMatch) {
-        if (!inList) { output.push("<ul>"); inList = true; }
-        output.push(`<li>${renderInline(bulletMatch[1])}</li>`);
+      // Ordered list
+      const olm = line.match(/^\d+\.\s+(.+)/);
+      if (olm) {
+        if (inList) { out.push("</ul>"); inList = false; }
+        if (!inOl) { out.push("<ol>"); inOl = true; }
+        out.push(`<li>${inline(olm[1])}</li>`);
         continue;
       }
 
-      // ── Numbered list ─────────────────────────
-      const numMatch = line.match(/^\d+\.\s+(.+)/);
-      if (numMatch) {
-        if (!inList) { output.push("<ul>"); inList = true; }
-        output.push(`<li>${renderInline(numMatch[1])}</li>`);
-        continue;
-      }
+      // Close lists on blank / non-list lines
+      if (line.trim() === "") { closeList(); continue; }
 
-      // ── Close list on blank / other line ──────
-      if (inList && line.trim() === "") {
-        output.push("</ul>");
-        inList = false;
-      }
-
-      // ── Paragraph ────────────────────────────
-      if (line.trim()) {
-        output.push(`<p>${renderInline(line)}</p>`);
-      }
+      // Paragraph
+      closeList();
+      out.push(`<p>${inline(line)}</p>`);
     }
 
-    if (inList)  output.push("</ul>");
-    if (inCode)  output.push(`<pre><code>${escape(codeAcc.join("\n"))}</code></pre>`);
+    closeList();
+    if (inCode) out.push(`<pre class="cue-code"><code>${esc(codeAcc.join("\n"))}</code></pre>`);
 
-    return output.join("");
+    return out.join("");
   }
 
   return { render };
-
 })();

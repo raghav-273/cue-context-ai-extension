@@ -1,91 +1,37 @@
-// src/core/state.js
-// ─────────────────────────────────────────────
-// Centralized state store with a minimal pub/sub
-// system. UI components subscribe to state slices
-// instead of reaching into each other.
-//
-// Pattern: Redux-lite (no library needed).
-// ─────────────────────────────────────────────
-
+// src/core/state.js — Centralized immutable state
 const CUE_STATE = (() => {
-
-  // ── Initial state ─────────────────────────────
-
-  let state = {
-    tabId:       null,
-    isOpen:      false,
-    isLoading:   false,
-    messages:    [],        // { role, content, timestamp }
-    pageContext: "",
-    mode:        "chat",    // "chat" | "summarize" | "keypoints" | etc.
-    error:       null,
+  let _s = {
+    tabId:        null,
+    isOpen:       false,
+    isLoading:    false,
+    isStreaming:  false,
+    messages:     [],
+    pageContext:  "",
+    pageMeta:     { title:"", url:"", domain:"", wordCount:0, readTime:0 },
+    currentMode:  "chat",
+    error:        null,
+    selectionText:"",
+    suggestions:  [],
+    dnaReady:     false,
   };
 
-  // ── Subscribers ───────────────────────────────
+  const get  = ()    => _s;
+  const set  = patch => { _s = { ..._s, ...patch }; };
 
-  const listeners = new Map();
-
-  function subscribe(key, fn) {
-    if (!listeners.has(key)) listeners.set(key, new Set());
-    listeners.get(key).add(fn);
-
-    // Return unsubscribe
-    return () => listeners.get(key).delete(fn);
-  }
-
-  function notify(keys) {
-    keys.forEach((key) => {
-      if (listeners.has(key)) {
-        listeners.get(key).forEach((fn) => fn(state[key], state));
-      }
-    });
-  }
-
-  // ── Updater ───────────────────────────────────
-
-  function update(patch) {
-    const changed = Object.keys(patch);
-    state = { ...state, ...patch };
-    notify(changed);
-  }
-
-  // ── Specific actions ──────────────────────────
-
-  function pushMessage(role, content) {
-    const msg = { role, content, timestamp: Date.now() };
-    update({ messages: [...state.messages, msg] });
+  const pushMsg = (role, content, meta = {}) => {
+    const msg = { id: `m_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, role, content, ts: Date.now(), ...meta };
+    set({ messages: [..._s.messages, msg] });
     return msg;
-  }
-
-  function setLoading(val) {
-    update({ isLoading: val, error: val ? null : state.error });
-  }
-
-  function setError(msg) {
-    update({ error: msg, isLoading: false });
-  }
-
-  function clearError() {
-    update({ error: null });
-  }
-
-  function clearHistory() {
-    update({ messages: [] });
-  }
-
-  function getState() {
-    return { ...state };
-  }
-
-  return {
-    subscribe,
-    update,
-    pushMessage,
-    setLoading,
-    setError,
-    clearError,
-    clearHistory,
-    getState,
   };
 
+  const updateLastMsg = patch => {
+    const msgs = [..._s.messages];
+    if (!msgs.length) return;
+    msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], ...patch };
+    set({ messages: msgs });
+  };
+
+  const clearMsgs = () => set({ messages: [] });
+
+  return { get, set, pushMsg, updateLastMsg, clearMsgs };
 })();

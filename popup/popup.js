@@ -1,153 +1,110 @@
 // popup/popup.js
-// ─────────────────────────────────────────────
-// Popup is a lightweight standalone UI.
-// It does NOT share modules with content scripts —
-// it communicates with them via chrome.tabs.sendMessage.
-// ─────────────────────────────────────────────
+const API_URL = key =>
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${key}`;
 
-const CONFIG = {
-  API_URL: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=YOUR_API_KEY_HERE`,
+const KEY = "YOUR_API_KEY_HERE";
 
-  ACTIONS: {
-    summarize: "Give a concise 3–5 sentence summary of this page.",
-    keypoints: "List the 5 most important points from this page as sharp, short bullets.",
-    simplify:  "Explain the main idea of this page in simple terms for a curious teenager.",
-    critique:  "Critically analyze the claims on this page. Note weaknesses or unsupported assertions.",
-  },
+const PROMPTS = {
+  summarize:  "Summarize this page in 3–5 direct sentences. Lead with the core idea.",
+  keypoints:  "List exactly 5 key insights from this page as sharp, short bullets. No fluff.",
+  critique:   "Critically analyze this page: strongest claim, weakest assumption, missing context.",
+  simplify:   "Explain the main idea in plain terms as if explaining to a curious non-expert.",
+  outline:    "Generate a clean hierarchical outline of this page's content structure.",
+  questions:  "Generate 5 thought-provoking questions this page raises but doesn't fully answer.",
 };
 
+const outputEl = document.getElementById("output");
+const statusEl = document.getElementById("statusText");
+const askBtn   = document.getElementById("askBtn");
+const question = document.getElementById("question");
 
-// ── DOM refs ──────────────────────────────────
+// Show current page domain
+chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+  const domain = tab?.url ? new URL(tab.url).hostname.replace(/^www\./, "") : "—";
+  document.getElementById("pageDomain").textContent = domain;
+});
 
-const outputEl  = document.getElementById("output");
-const questionEl = document.getElementById("question");
-const statusEl  = document.getElementById("status");
-const askBtn    = document.getElementById("askBtn");
-
-
-// ── UI helpers ────────────────────────────────
-
-function setLoading(on) {
-  askBtn.disabled   = on;
-  statusEl.textContent = on ? "Thinking…" : "";
-  statusEl.className   = on ? "status-text loading" : "status-text";
+function setStatus(txt, type = "") {
+  statusEl.textContent  = txt;
+  statusEl.className    = `status ${type}`;
 }
 
-function setOutput(html, isError = false) {
-  outputEl.innerHTML  = isError
-    ? `<span style="color:#fca5a5">⚠ ${html}</span>`
-    : html;
-  statusEl.textContent = "";
+function setOutput(html) {
+  outputEl.innerHTML = html;
 }
 
-
-// ── API call ──────────────────────────────────
-
-async function callAI(prompt) {
-  const res = await fetch(CONFIG.API_URL, {
-    method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: 512, temperature: 0.7 },
-    }),
-  });
-
-  if (!res.ok) throw new Error(`API error ${res.status}`);
-
-  const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "No response.";
-}
-
-
-// ── Page content fetcher ──────────────────────
-
-async function getPageContext() {
+async function getPageText() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-  return new Promise((resolve) => {
-    chrome.scripting.executeScript(
-      {
-        target: { tabId: tab.id },
-        func:   () => {
-          const main = document.querySelector("main, article, [role='main']")
-            ?? document.body;
-          return {
-            title: document.title,
-            text:  main.innerText.replace(/\n{3,}/g, "\n\n").trim().slice(0, 4000),
-          };
-        },
-      },
-      ([result]) => {
-        const val = result?.result;
-        resolve(val ? `${val.title}\n\n${val.text}` : "Could not read page.");
-      }
-    );
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: () => {
+      const main = document.querySelector("main,article,[role='main']") || document.body;
+      return {
+        title: document.title,
+        text:  main.innerText.replace(/\n{3,}/g, "\n\n").trim().slice(0, 4000),
+      };
+    },
   });
+  const v = result?.result;
+  return v ? `${v.title}\n\n${v.text}` : "Unable to read page content.";
 }
 
+async function run(promptText) {
+  setStatus("Reading page…", "loading");
+  setOutput('<span class="placeholder">Working…</span>');
+  askBtn.disabled = true;
 
-// ── Core action handler ───────────────────────
-
-async function runAction(promptText) {
   try {
-    setLoading(true);
-    outputEl.innerHTML = `<span class="placeholder">Thinking…</span>`;
+    const context = await getPageText();
+    setStatus("Generating…", "loading");
 
-    const context = await getPageContext();
+    const body = {
+      contents: [{
+        parts: [{
+          text: `You are CUE, a sharp browser assistant. Be direct and concise. No filler.\n\nPAGE CONTENT:\n${context}\n\nTASK: ${promptText}`,
+        }],
+      }],
+      generationConfig: { maxOutputTokens: 600, temperature: 0.7 },
+    };
 
-    const fullPrompt = `
-You are CUE, a concise browser assistant.
+    const res  = await fetch(API_URL(KEY), {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(body),
+    });
 
-PAGE CONTENT:
-${context}
+    if (!res.ok) throw new Error(`API error ${res.status}`);
 
-TASK:
-${promptText}
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "No response.";
 
-Rules: Be direct. Use plain text. Short bullets if listing. No markdown symbols like ** or *.
-`.trim();
-
-    const result = await callAI(fullPrompt);
-    setOutput(result.replace(/\n/g, "<br>"));
-
-  } catch (err) {
-    setOutput(err.message, true);
-    statusEl.textContent = "Error";
-    statusEl.className   = "status-text error";
+    setOutput(text.replace(/\n/g, "<br>").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>"));
+    setStatus("", "");
+  } catch(err) {
+    setOutput(`<span style="color:#fca5a5">⚠ ${err.message}</span>`);
+    setStatus("Error", "error");
   } finally {
-    setLoading(false);
+    askBtn.disabled = false;
   }
 }
 
-
-// ── Events ────────────────────────────────────
-
-// Quick action buttons
-document.querySelectorAll(".action-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    const prompt = CONFIG.ACTIONS[btn.dataset.action];
-    if (prompt) runAction(prompt);
-  });
+// Mode buttons
+document.querySelectorAll(".mode-btn").forEach(btn => {
+  btn.addEventListener("click", () => run(PROMPTS[btn.dataset.action]));
 });
 
-// Ask button
+// Ask
 askBtn.addEventListener("click", () => {
-  const q = questionEl.value.trim();
-  if (!q) return;
-  runAction(`Answer this about the page: ${q}`);
+  const q = question.value.trim();
+  if (q) run(`Answer this about the page: ${q}`);
 });
 
-// Enter to submit
-questionEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    askBtn.click();
-  }
+question.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askBtn.click(); }
 });
 
 // Open sidebar
-document.getElementById("openSidebar").addEventListener("click", async () => {
+document.getElementById("openSidebarBtn").addEventListener("click", async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   chrome.tabs.sendMessage(tab.id, { type: "OPEN_SIDEBAR" });
   window.close();

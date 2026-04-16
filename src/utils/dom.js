@@ -1,55 +1,43 @@
-// src/utils/dom.js
-// ─────────────────────────────────────────────
-// Lightweight DOM helpers.
-// Keeps UI code declarative and readable.
-// ─────────────────────────────────────────────
-
+// src/utils/dom.js — DOM utilities
 const CUE_DOM = (() => {
-
-  /**
-   * Create an element with attributes + children in one call.
-   * el("div", { class: "foo", id: "bar" }, "Hello", otherEl)
-   */
+  // Declarative element builder: el("div", {class:"foo", onClick: fn}, child1, "text")
   function el(tag, attrs = {}, ...children) {
     const node = document.createElement(tag);
-
-    Object.entries(attrs).forEach(([k, v]) => {
-      if (k === "class") node.className = v;
-      else if (k.startsWith("on") && typeof v === "function") {
-        node.addEventListener(k.slice(2).toLowerCase(), v);
-      } else {
-        node.setAttribute(k, v);
-      }
-    });
-
-    children.forEach((child) => {
-      if (child == null) return;
-      node.append(typeof child === "string" ? document.createTextNode(child) : child);
-    });
-
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === "class")                          node.className = v;
+      else if (k === "html")                      node.innerHTML = v;
+      else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
+      else if (v !== null && v !== undefined)     node.setAttribute(k, v);
+    }
+    for (const c of children) {
+      if (c == null) continue;
+      node.append(typeof c === "string" ? document.createTextNode(c) : c);
+    }
     return node;
   }
 
-  /** Query within a root (defaults to document) */
-  function qs(selector, root = document) {
-    return root.querySelector(selector);
+  const qs  = (sel, root = document) => root.querySelector(sel);
+  const qsa = (sel, root = document) => [...root.querySelectorAll(sel)];
+
+  function setHTML(node, html)   { node.innerHTML = html; }
+  function setText(node, text)   { node.textContent = text; }
+  function scrollBottom(node)    { requestAnimationFrame(() => { node.scrollTop = node.scrollHeight; }); }
+  function addClass(n, c)        { n.classList.add(c); }
+  function removeClass(n, c)     { n.classList.remove(c); }
+  function toggleClass(n, c, f)  { n.classList.toggle(c, f); }
+  function hasClass(n, c)        { return n.classList.contains(c); }
+
+  // Animate a number from start to end
+  function animateNum(el, from, to, dur = 600, fmt = v => Math.round(v)) {
+    const start = performance.now();
+    const step = now => {
+      const p = Math.min((now - start) / dur, 1);
+      const ease = 1 - Math.pow(1 - p, 3);
+      el.textContent = fmt(from + (to - from) * ease);
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   }
 
-  /** Set inner HTML safely (only use with trusted AI text post-sanitization) */
-  function setHTML(node, html) {
-    node.innerHTML = html;
-  }
-
-  /** Scroll element to its bottom */
-  function scrollToBottom(node) {
-    node.scrollTop = node.scrollHeight;
-  }
-
-  /** Add/remove a class based on a boolean */
-  function toggleClass(node, cls, force) {
-    node.classList.toggle(cls, force);
-  }
-
-  return { el, qs, setHTML, scrollToBottom, toggleClass };
-
+  return { el, qs, qsa, setHTML, setText, scrollBottom, addClass, removeClass, toggleClass, hasClass, animateNum };
 })();
