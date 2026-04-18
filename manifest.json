@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CUE — Contextual Intelligence",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "description": "AI-powered contextual intelligence layer for the web. Understands any page, remembers your sessions, thinks with you.",
 
   "permissions": [
@@ -13,7 +13,7 @@
   ],
 
   "host_permissions": [
-    "https://generativelanguage.googleapis.com/*"
+    "http://localhost:3000/*"
   ],
 
   "action": {

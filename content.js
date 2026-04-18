@@ -4,7 +4,9 @@
 // Zero deps. No build. Runs as a content script.
 // ═══════════════════════════════════════════════
 
-const CUE_KEY = "YOUR_API_KEY"; // ← replace
+// v4.0.0 — No API key here. All AI calls go to the backend proxy.
+// Backend URL is kept in sync with CUE.BACKEND.URL (src/core/config.js).
+const BACKEND_URL = "http://localhost:3000/api/ai";
 
 // ─────────────────────────────────────────────
 // 1. INJECT  (idempotent — safe on re-inject)
@@ -460,39 +462,36 @@ ${question}`;
 }
 
 // ─────────────────────────────────────────────
-// 13. API
+// 13. API  —  routes through backend proxy
+//   No API key in the frontend. Ever.
 // ─────────────────────────────────────────────
 
 async function callAI(prompt) {
   const controller = new AbortController();
-  const timeout    = setTimeout(() => controller.abort(), 20_000);
+  const timer      = setTimeout(() => controller.abort(), 25_000);
+
+  const messages     = [{ role: "user", content: prompt }];
+  const systemPrompt = "You are CUE, a precise browser assistant. Answer directly using markdown when helpful.";
 
   let res;
   try {
-    res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${CUE_KEY}`,
-      {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        signal:  controller.signal,
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 1200, temperature: 0.7, topP: 0.9 },
-        }),
-      }
-    );
+    res = await fetch(BACKEND_URL, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      signal:  controller.signal,
+      body:    JSON.stringify({ messages, systemPrompt, stream: false }),
+    });
   } catch (e) {
-    clearTimeout(timeout);
-    throw new Error(e.name === "AbortError" ? "Request timed out." : "Network error.");
+    clearTimeout(timer);
+    if (e.name === "AbortError") throw new Error("Request timed out.");
+    throw new Error("Network error — is the CUE backend running on localhost:3000?");
   }
-  clearTimeout(timeout);
+  clearTimeout(timer);
 
-  if (res.status === 429) throw new Error("Rate limited — wait a moment.");
-  if (res.status === 401 || res.status === 403) throw new Error("Invalid API key.");
-  if (!res.ok) throw new Error(`API error ${res.status}.`);
+  let body;
+  try { body = await res.json(); } catch { body = {}; }
 
-  const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error("Empty response from API.");
-  return text.trim();
+  if (!res.ok) throw new Error(body?.message || `Backend error ${res.status}.`);
+  if (!body.text) throw new Error("Empty response from backend.");
+  return body.text;
 }

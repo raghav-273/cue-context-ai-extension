@@ -1,8 +1,7 @@
-// popup/popup.js
-const API_URL = key =>
-  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${key}`;
+// popup/popup.js  v4.0.0
+// No API key. All AI calls go to the backend proxy.
 
-const KEY = "YOUR_API_KEY_HERE";
+const BACKEND_URL = "http://localhost:3000/api/ai"; // matches CUE.BACKEND.URL
 
 const PROMPTS = {
   summarize:  "Summarize this page in 3–5 direct sentences. Lead with the core idea.",
@@ -24,6 +23,8 @@ chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
   document.getElementById("pageDomain").textContent = domain;
 });
 
+// ── UI helpers ────────────────────────────────
+
 function setStatus(txt, type = "") {
   statusEl.textContent  = txt;
   statusEl.className    = `status ${type}`;
@@ -33,7 +34,9 @@ function setOutput(html) {
   outputEl.innerHTML = html;
 }
 
-async function getPageText() {
+// ── Page content extractor ────────────────────
+
+async function getPageContext() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const [result] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
@@ -41,13 +44,16 @@ async function getPageText() {
       const main = document.querySelector("main,article,[role='main']") || document.body;
       return {
         title: document.title,
+        url:   location.href,
         text:  main.innerText.replace(/\n{3,}/g, "\n\n").trim().slice(0, 4000),
       };
     },
   });
   const v = result?.result;
-  return v ? `${v.title}\n\n${v.text}` : "Unable to read page content.";
+  return v ? `PAGE: ${v.title}\nURL: ${v.url}\n\nCONTENT:\n${v.text}` : "Could not read page.";
 }
+
+// ── Core handler ──────────────────────────────
 
 async function run(promptText) {
   setStatus("Reading page…", "loading");
@@ -55,32 +61,37 @@ async function run(promptText) {
   askBtn.disabled = true;
 
   try {
-    const context = await getPageText();
+    const pageContext = await getPageContext();
+
+    const systemPrompt = `You are CUE, a concise browser assistant. Answer directly. Use markdown when helpful.
+
+${pageContext}`;
+
+    const messages = [{ role: "user", content: promptText }];
+
     setStatus("Generating…", "loading");
 
-    const body = {
-      contents: [{
-        parts: [{
-          text: `You are CUE, a sharp browser assistant. Be direct and concise. No filler.\n\nPAGE CONTENT:\n${context}\n\nTASK: ${promptText}`,
-        }],
-      }],
-      generationConfig: { maxOutputTokens: 600, temperature: 0.7 },
-    };
-
-    const res  = await fetch(API_URL(KEY), {
+    const res = await fetch(BACKEND_URL, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(body),
+      body:    JSON.stringify({ messages, systemPrompt, stream: false }),
     });
 
-    if (!res.ok) throw new Error(`API error ${res.status}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `Server error ${res.status}`);
+    }
 
-    const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "No response.";
+    const { text } = await res.json();
 
-    setOutput(text.replace(/\n/g, "<br>").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>"));
+    setOutput(text
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+      .replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>")
+      .replace(/\n/g,"<br>")
+    );
     setStatus("", "");
-  } catch(err) {
+
+  } catch (err) {
     setOutput(`<span style="color:#fca5a5">⚠ ${err.message}</span>`);
     setStatus("Error", "error");
   } finally {
@@ -88,12 +99,12 @@ async function run(promptText) {
   }
 }
 
-// Mode buttons
+// ── Event bindings ────────────────────────────
+
 document.querySelectorAll(".mode-btn").forEach(btn => {
   btn.addEventListener("click", () => run(PROMPTS[btn.dataset.action]));
 });
 
-// Ask
 askBtn.addEventListener("click", () => {
   const q = question.value.trim();
   if (q) run(`Answer this about the page: ${q}`);
@@ -103,8 +114,7 @@ question.addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askBtn.click(); }
 });
 
-// Open sidebar
-document.getElementById("openSidebarBtn").addEventListener("click", async () => {
+document.getElementById("openSidebarBtn")?.addEventListener("click", async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   chrome.tabs.sendMessage(tab.id, { type: "OPEN_SIDEBAR" });
   window.close();
