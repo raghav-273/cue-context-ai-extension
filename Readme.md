@@ -24,9 +24,9 @@
 ┌─────────────────────────────────────┐
 │         Chrome Extension            │
 │                                     │
-│  content.js  ──┐                   │
-│  popup.js    ──┼──▶  POST          │
-│  api.js      ──┘  /api/ai          │
+│  content.js  ──┐                    │
+│  popup.js    ──┼──▶  POST           │
+│  api.js      ──┘  /api/ai           │
 │                    localhost:3000   │
 └─────────────────────────────────────┘
                      │
