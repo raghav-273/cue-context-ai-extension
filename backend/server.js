@@ -13,9 +13,8 @@ config(); // load .env
 
 const {
   GEMINI_API_KEY,
-  GEMINI_MODEL    = "gemini-2.5-flash-lite",
-  PORT            = 3000,
-  ALLOWED_ORIGIN  = "chrome-extension://",   // set to your extension ID in prod
+  GEMINI_MODEL = "gemini-2.5-flash-lite",
+  PORT         = 3000,
 } = process.env;
 
 if (!GEMINI_API_KEY) {
@@ -32,14 +31,29 @@ const app = express();
 
 app.use(express.json({ limit: "64kb" }));
 
-// CORS — in production, lock to your extension's chrome-extension:// origin
-app.use(cors({
-  origin: (origin, cb) => {
-    // Allow requests with no origin (curl, Postman) and chrome-extension://
-    if (!origin ||origin === "null"|| origin.startsWith("chrome-extension://")) return cb(null, true);
-    cb(new Error("Not allowed by CORS"));
-  },
-}));
+// ── CORS ──────────────────────────────────────
+// Chrome extension content scripts send requests with:
+//   - Origin: null                  (content script fetches on some pages)
+//   - Origin: chrome-extension://ID (popup / background fetches)
+//
+// The cors() origin callback receives the literal string "null" (not JS null)
+// for content script requests, so the !origin guard misses it and the
+// request is rejected — producing the "Not allowed by CORS" error.
+//
+// Fix: reflect the request Origin unconditionally for local dev.
+// In production, restrict to your specific extension ID via ALLOWED_ORIGINS.
+
+const CORS_OPTIONS = {
+  origin: true,          // reflect any Origin header — correct for local dev
+  methods: ["POST", "GET", "OPTIONS"],
+  allowedHeaders: ["Content-Type"],
+  credentials: false,
+};
+
+app.use(cors(CORS_OPTIONS));
+
+// Explicitly handle OPTIONS preflight for every route
+app.options("*", cors(CORS_OPTIONS));
 
 // ── Rate limiter ─────────────────────────────
 // 60 requests / minute per IP — adjust as needed
