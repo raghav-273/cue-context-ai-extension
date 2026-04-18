@@ -1,11 +1,26 @@
 # CUE — Contextual Intelligence Layer
-### Chrome Extension + Backend · v4.0.0 · Production-Grade
+### Chrome Extension + Backend · v4.0.1 · Patch Fixes
 
 > **An AI assistant that reads every page you visit and thinks alongside you — with the API key where it belongs: on the server.**
 
 ---
-
 ## What's new in v4.0.1
+
+This release fixes issues found after the v4.0.0 launch.
+
+### Fixes
+- Updated backend integration
+- Fixed API request flow issues
+- Improved configuration handling
+- Minor UI/extension stability fixes
+
+### Notes
+- No breaking changes
+- Backend architecture remains the same
+- Safe update from v4.0
+
+---
+## What's new in v4.0.0
 
 | Change | Detail |
 |---|---|
