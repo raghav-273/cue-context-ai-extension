@@ -5,7 +5,7 @@
 
 ---
 
-## What's new in v4.0.0
+## What's new in v4.0.1
 
 | Change | Detail |
 |---|---|
